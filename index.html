@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.json"><meta name="theme-color" content="#1f7a4d"><link rel="icon" href="icon-192.png"><title>نظام محاسبة محل المواد الغذائية</title>
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--tx:#1d2420;--mu:#6b756e;--ac:#1f7a4d;--ac2:#e8f3ec;--bd:#dfe3dd;--rd:#c0392b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141815;--card:#1d231f;--tx:#e8ece9;--mu:#9aa59d;--ac:#4cc38a;--ac2:#22332a;--bd:#2c352f;--rd:#ff7b6b;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141815;--card:#1d231f;--tx:#e8ece9;--mu:#9aa59d;--ac:#4cc38a;--ac2:#22332a;--bd:#2c352f;--rd:#ff7b6b;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif}
+header{padding:12px 14px 4px;font-weight:700;font-size:18px}
+nav{display:flex;gap:6px;overflow-x:auto;padding:6px 12px}
+nav button{white-space:nowrap;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 14px;border-radius:20px;font:inherit}
+nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+main{padding:8px 12px 80px;max-width:760px;margin:auto}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+h3{margin:0 0 8px;font-size:16px}
+input,select,textarea{width:100%;padding:10px;margin:4px 0;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+label{display:block;color:var(--mu);font-size:13px;margin-top:6px}
+button{font:inherit;cursor:pointer}
+.pri{width:100%;background:var(--ac);color:#fff;border:0;border-radius:10px;padding:12px;margin-top:8px;font-weight:700}
+.sm{border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:4px 10px}
+.rd{color:var(--rd)}
+.mu{color:var(--mu)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd)}
+.row>b{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chips button{border:1px solid var(--ac);background:var(--ac2);color:var(--tx);border-radius:16px;padding:6px 12px}
+.qty{display:flex;align-items:center;gap:8px}
+.qty button{width:30px;height:30px;border-radius:50%;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+.tot{font-size:18px;padding:10px 0;text-align:left}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--ac2);border-radius:10px;padding:10px}
+.kpi small{display:block;color:var(--mu)}
+.kpi b{font-size:18px}
+.wide{overflow-x:auto}
+#t{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:20px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
+#t.on{opacity:1}
+.ov{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:4;padding:calc(12px + env(safe-area-inset-top,0px)) 12px 12px}
+.sheet{background:#fff;color:#000;max-width:600px;margin:auto;padding:16px;border-radius:8px}
+.sheet table{width:100%;border-collapse:collapse}
+.sheet th,.sheet td{border-bottom:1px solid #ccc;padding:6px;text-align:right}
+.acts{max-width:600px;margin:10px auto;display:flex;gap:8px}
+@media print{body>*:not(#inv){display:none!important}.ov{position:static;padding:0;background:#fff}.acts{display:none}.sheet{padding:0}}
+</style>
+</head>
+<body>
+<header>🛒 نظام محاسبة المحل</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<div id="t"></div>
+<div id="inv"></div>
+<script>
+let db;
+try{db=JSON.parse(localStorage.getItem('shopdb'))}catch(e){}
+db=db||{};
+['products','customers','sales','purchases','expenses','payments'].forEach(k=>{if(!Array.isArray(db[k]))db[k]=[]});
+const save=()=>{try{localStorage.setItem('shopdb',JSON.stringify(db))}catch(e){}};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const fd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const today=()=>fd(new Date());
+const f=n=>(Math.round((n||0)*100)/100).toLocaleString('en-US');
+const sum=(a,g)=>a.reduce((s,x)=>s+g(x),0);
+let tab='pos',cart=[],cc='',editId='';
+const tabs={pos:'الكاشير',prod:'الأصناف',buy:'المشتريات',cust:'العملاء',exp:'المصروفات',rep:'التقارير'};
+function toast(m){const t=$('#t');t.textContent=m;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),1800)}
+function del(b,arr,id){if(!b.dataset.s){b.dataset.s=1;b.textContent='تأكيد؟';return}db[arr]=db[arr].filter(x=>x.id!=id);save();render()}
+const opts=()=>db.products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+
+const views={
+pos(){return `<div class="card"><input id="q" placeholder="ابحث بالاسم أو امسح الباركود ثم Enter" autocomplete="off"><div id="res" class="chips"></div></div><div class="card" id="cart"></div>`},
+prod(){return `<div class="card"><h3 id="ph">صنف جديد</h3>
+<input id="pn" placeholder="اسم الصنف"><input id="pc" placeholder="الباركود (اختياري)">
+<div class="grid"><input id="pp" type="number" inputmode="decimal" placeholder="سعر البيع"><input id="pk" type="number" inputmode="decimal" placeholder="سعر الشراء"><input id="pq" type="number" inputmode="decimal" placeholder="الكمية"><input id="pm" type="number" inputmode="decimal" placeholder="حد إعادة الطلب"></div>
+<label>تاريخ الصلاحية (اختياري)</label><input id="pe" type="date">
+<button class="pri" onclick="saveProd()">حفظ الصنف</button></div>
+<div class="card"><h3>الأصناف (${db.products.length})</h3>${db.products.map(p=>`<div class="row"><b>${esc(p.name)}<br><small class="mu">بيع ${f(p.price)} · شراء ${f(p.cost)}</small></b><span class="${p.qty<=p.min?'rd':''}">${f(p.qty)}</span><button class="sm" onclick="editProd('${p.id}')">تعديل</button><button class="sm rd" onclick="del(this,'products','${p.id}')">حذف</button></div>`).join('')||'<p class="mu">لا توجد أصناف بعد</p>'}</div>`},
+buy(){return `<div class="card"><h3>فاتورة شراء</h3><select id="bp">${opts()}</select>
+<div class="grid"><input id="bq" type="number" inputmode="decimal" placeholder="الكمية"><input id="bc" type="number" inputmode="decimal" placeholder="سعر الشراء للوحدة"></div>
+<input id="bs" placeholder="المورد (اختياري)"><button class="pri" onclick="addBuy()">حفظ وإضافة للمخزون</button></div>
+<div class="card"><h3>آخر المشتريات</h3>${db.purchases.slice(-20).reverse().map(p=>`<div class="row"><b>${esc(p.name)}<br><small class="mu">${p.date} ${esc(p.sup||'')}</small></b><span>${f(p.q)} × ${f(p.cost)}</span><button class="sm rd" onclick="del(this,'purchases','${p.id}')">حذف</button></div>`).join('')||'<p class="mu">لا توجد مشتريات</p>'}</div>`},
+cust(){return `<div class="card"><h3>عميل جديد</h3><input id="cn" placeholder="اسم العميل"><button class="pri" onclick="addCust()">إضافة</button></div>
+<div class="card"><h3>العملاء والديون</h3>${db.customers.map(c=>`<div class="row" style="flex-wrap:wrap"><b>${esc(c.name)}</b><span class="${c.bal>0?'rd':''}">${f(c.bal)}</span><input id="pay${c.id}" type="number" inputmode="decimal" placeholder="مبلغ السداد" style="flex:1 1 120px"><button class="sm" onclick="payCust('${c.id}')">سداد</button><button class="sm rd" onclick="del(this,'customers','${c.id}')">حذف</button></div>`).join('')||'<p class="mu">لا يوجد عملاء</p>'}</div>`},
+exp(){return `<div class="card"><h3>مصروف جديد</h3><input id="ed" placeholder="البيان (إيجار، كهرباء...)"><input id="ea" type="number" inputmode="decimal" placeholder="المبلغ"><button class="pri" onclick="addExp()">حفظ</button></div>
+<div class="card"><h3>آخر المصروفات</h3>${db.expenses.slice(-30).reverse().map(e=>`<div class="row"><b>${esc(e.desc)}<br><small class="mu">${e.date}</small></b><span>${f(e.amt)}</span><button class="sm rd" onclick="del(this,'expenses','${e.id}')">حذف</button></div>`).join('')||'<p class="mu">لا توجد مصروفات</p>'}</div>`},
+rep(){return `<div class="card"><div class="grid"><label>من<input id="d1" type="date" value="${today()}" onchange="rep()"></label><label>إلى<input id="d2" type="date" value="${today()}" onchange="rep()"></label></div></div><div id="rp"></div>
+<div class="card"><h3>الفواتير السابقة</h3>${db.sales.slice(-20).reverse().map(s=>`<div class="row"><b>فاتورة ${db.sales.indexOf(s)+1}<br><small class="mu">${s.date}</small></b><span>${f(s.total)}</span><button class="sm" onclick="showInv('${s.id}')">عرض / PDF</button></div>`).join('')||'<p class="mu">لا فواتير</p>'}</div>
+<div class="card"><h3>اسم المحل على الفاتورة</h3><input value="${esc(db.shop||'')}" onchange="db.shop=this.value;save()" placeholder="اسم المحل"></div>
+<div class="card"><h3>نسخة احتياطية</h3><p class="mu">انسخ النص واحفظه في مكان آمن. للاسترجاع الصقه في الخانة الثانية.</p><textarea rows="3" readonly onclick="this.select()">${esc(JSON.stringify(db))}</textarea><textarea id="imp" rows="2" placeholder="الصق النسخة هنا للاسترجاع"></textarea><button class="pri" onclick="imp()">استرجاع</button></div>`}
+};
+
+function render(){
+ $('#nav').innerHTML=Object.keys(tabs).map(k=>`<button class="${k==tab?'on':''}" onclick="tab='${k}';render()">${tabs[k]}</button>`).join('');
+ $('#main').innerHTML=views[tab]();
+ if(tab=='pos'){bindPos();drawCart()}
+ if(tab=='rep')rep();
+}
+function bindPos(){
+ const q=$('#q');
+ q.oninput=()=>{const v=q.value.trim().toLowerCase();$('#res').innerHTML=v?db.products.filter(p=>p.name.toLowerCase().includes(v)||(p.code&&p.code==v)).slice(0,8).map(p=>`<button onclick="addCart('${p.id}')">${esc(p.name)} · ${f(p.price)}</button>`).join('')||'<span class="mu">لا نتائج</span>':''};
+ q.onkeydown=e=>{if(e.key!='Enter')return;const v=q.value.trim().toLowerCase();const p=db.products.find(p=>p.code&&p.code.toLowerCase()==v)||db.products.find(p=>p.name.toLowerCase().includes(v));if(p){addCart(p.id)}else toast('الصنف غير موجود')};
+}
+function addCart(id){
+ const p=db.products.find(x=>x.id==id);if(!p)return;
+ if(p.qty<=0)toast('تنبيه: الكمية في المخزون صفر');
+ const c=cart.find(i=>i.pid==id);
+ if(c)c.q++;else cart.push({pid:id,name:p.name,q:1,p:p.price,c:p.cost});
+ const q=$('#q');q.value='';$('#res').innerHTML='';q.focus();drawCart();
+}
+function chq(k,d){cart[k].q+=d;if(cart[k].q<=0)cart.splice(k,1);drawCart()}
+function drawCart(){
+ const t=sum(cart,i=>i.q*i.p);
+ $('#cart').innerHTML=(cart.length?cart.map((i,k)=>`<div class="row"><b>${esc(i.name)}</b><span class="mu">${f(i.p)}</span><span class="qty"><button onclick="chq(${k},-1)">−</button>${i.q}<button onclick="chq(${k},1)">+</button></span><span>${f(i.q*i.p)}</span></div>`).join(''):'<p class="mu">السلة فارغة</p>')+
+ `<div class="tot">الإجمالي: <b>${f(t)}</b></div>
+ <label>المدفوع (أقل من الإجمالي = الباقي دين على العميل)</label><input id="paid" type="number" inputmode="decimal" value="${t}">
+ <label>العميل (للبيع الآجل)</label><select id="cust" onchange="cc=this.value"><option value="">— بدون —</option>${db.customers.map(c=>`<option value="${c.id}" ${c.id==cc?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+ <button class="pri" onclick="done()">إتمام البيع</button>`;
+}
+function done(){
+ if(!cart.length)return toast('السلة فارغة');
+ const t=sum(cart,i=>i.q*i.p);let paid=+$('#paid').value;if(isNaN(paid)||paid<0)paid=0;if(paid>t)paid=t;
+ const cid=$('#cust').value;
+ if(paid<t&&!cid)return toast('اختر العميل للبيع الآجل');
+ cart.forEach(i=>{const p=db.products.find(x=>x.id==i.pid);if(p)p.qty-=i.q});
+ if(cid){const c=db.customers.find(c=>c.id==cid);if(c)c.bal+=t-paid}
+ db.sales.push({id:uid(),date:today(),items:cart.map(i=>({...i})),total:t,paid,cid});
+ const sid=db.sales[db.sales.length-1].id;cart=[];cc='';save();drawCart();showInv(sid);
+}
+function saveProd(){
+ const n=$('#pn').value.trim();if(!n)return toast('أدخل اسم الصنف');
+ const o={name:n,code:$('#pc').value.trim(),price:+$('#pp').value||0,cost:+$('#pk').value||0,qty:+$('#pq').value||0,min:+$('#pm').value||0,exp:$('#pe').value};
+ if(editId){Object.assign(db.products.find(p=>p.id==editId),o)}else db.products.push({id:uid(),...o});
+ editId='';save();render();toast('تم الحفظ');
+}
+function editProd(id){
+ const p=db.products.find(x=>x.id==id);editId=id;
+ $('#ph').textContent='تعديل صنف';
+ $('#pn').value=p.name;$('#pc').value=p.code||'';$('#pp').value=p.price;$('#pk').value=p.cost;$('#pq').value=p.qty;$('#pm').value=p.min;$('#pe').value=p.exp||'';
+ window.scrollTo(0,0);
+}
+function addBuy(){
+ const p=db.products.find(x=>x.id==$('#bp').value),q=+$('#bq').value,c=+$('#bc').value;
+ if(!p||!(q>0))return toast('اختر الصنف وأدخل الكمية');
+ p.qty+=q;if(c>0)p.cost=c;
+ db.purchases.push({id:uid(),date:today(),pid:p.id,name:p.name,q,cost:c||p.cost,sup:$('#bs').value.trim()});
+ save();render();toast('تمت إضافة الكمية');
+}
+function addCust(){const n=$('#cn').value.trim();if(!n)return toast('أدخل الاسم');db.customers.push({id:uid(),name:n,bal:0});save();render()}
+function payCust(id){
+ const a=+$('#pay'+id).value;if(!(a>0))return toast('أدخل مبلغ السداد');
+ db.customers.find(c=>c.id==id).bal-=a;db.payments.push({id:uid(),date:today(),cid:id,amt:a});save();render();toast('تم تسجيل السداد');
+}
+function addExp(){
+ const d=$('#ed').value.trim(),a=+$('#ea').value;if(!d||!(a>0))return toast('أدخل البيان والمبلغ');
+ db.expenses.push({id:uid(),date:today(),desc:d,amt:a});save();render();
+}
+function rep(){
+ const a=$('#d1').value,b=$('#d2').value,inr=x=>x.date>=a&&x.date<=b;
+ const S=db.sales.filter(inr),E=db.expenses.filter(inr),P=db.purchases.filter(inr),Y=db.payments.filter(inr);
+ const rev=sum(S,s=>s.total),cogs=sum(S,s=>sum(s.items,i=>i.q*i.c)),gp=rev-cogs,ex=sum(E,e=>e.amt);
+ const cash=sum(S,s=>s.paid)+sum(Y,y=>y.amt)-ex-sum(P,p=>p.q*p.cost);
+ const top={};S.forEach(s=>s.items.forEach(i=>top[i.name]=(top[i.name]||0)+i.q));
+ const tp=Object.entries(top).sort((x,y)=>y[1]-x[1]).slice(0,5);
+ const soon=fd(new Date(Date.now()+30*864e5));
+ const low=db.products.filter(p=>p.qty<=p.min),exp=db.products.filter(p=>p.exp&&p.exp<=soon);
+ const k=(l,v,c)=>`<div class="kpi"><small>${l}</small><b class="${c||''}">${f(v)}</b></div>`;
+ $('#rp').innerHTML=`<div class="card"><h3>ملخص الفترة (${S.length} فاتورة)</h3><div class="grid">${k('المبيعات',rev)}${k('تكلفة البضاعة',cogs)}${k('مجمل الربح',gp)}${k('المصروفات',ex)}${k('صافي الربح',gp-ex,gp-ex<0?'rd':'')}${k('حركة الصندوق',cash)}</div></div>
+ <div class="card"><h3>الوضع الحالي</h3><div class="grid">${k('ديون العملاء',sum(db.customers,c=>c.bal))}${k('قيمة المخزون (بالتكلفة)',sum(db.products,p=>p.qty*p.cost))}</div></div>
+ <div class="card"><h3>الأكثر مبيعاً</h3>${tp.map(t=>`<div class="row"><b>${esc(t[0])}</b><span>${f(t[1])}</span></div>`).join('')||'<p class="mu">لا مبيعات في الفترة</p>'}</div>
+ <div class="card"><h3>تحتاج إعادة طلب</h3>${low.map(p=>`<div class="row"><b>${esc(p.name)}</b><span class="rd">${f(p.qty)}</span></div>`).join('')||'<p class="mu">لا شيء</p>'}</div>
+ <div class="card"><h3>قرب انتهاء الصلاحية (30 يوماً)</h3>${exp.map(p=>`<div class="row"><b>${esc(p.name)}</b><span class="rd">${p.exp}</span></div>`).join('')||'<p class="mu">لا شيء</p>'}</div>`;
+}
+function imp(){
+ try{const d=JSON.parse($('#imp').value);if(!d||!Array.isArray(d.products))throw 0;db=d;['products','customers','sales','purchases','expenses','payments'].forEach(k=>{if(!Array.isArray(db[k]))db[k]=[]});save();render();toast('تم الاسترجاع')}
+ catch(e){toast('النص غير صالح')}
+}
+function showInv(id){
+ const i=db.sales.findIndex(s=>s.id==id),s=db.sales[i];if(!s)return;
+ const c=db.customers.find(c=>c.id==s.cid);
+ $('#inv').innerHTML=`<div class="ov"><div class="sheet"><h2>${esc(db.shop||'فاتورة مبيعات')}</h2><p>فاتورة رقم: ${i+1} · التاريخ: ${s.date}${c?'<br>العميل: '+esc(c.name):''}</p><table><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>${s.items.map(x=>`<tr><td>${esc(x.name)}</td><td>${f(x.q)}</td><td>${f(x.p)}</td><td>${f(x.q*x.p)}</td></tr>`).join('')}</table><p class="tot">الإجمالي: <b>${f(s.total)}</b><br>المدفوع: ${f(s.paid)}<br>المتبقي: ${f(s.total-s.paid)}</p></div><div class="acts"><button class="pri" onclick="window.print()">طباعة / حفظ PDF</button><button class="sm" onclick="$('#inv').innerHTML=''">إغلاق</button></div></div>`;
+}
+render();
+</script>
+<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}</script>
+</body>
+</html>
